@@ -53,6 +53,63 @@
         #graphs { position: absolute; top: 20px; right: 20px; width: 250px; }
         canvas.graph { width: 100%; height: 60px; background: #111; border: 1px solid #333; margin-bottom: 5px; }
 
+        #system-panels {
+            position: absolute;
+            left: 20px;
+            top: 120px;
+            display: grid;
+            grid-template-columns: repeat(2, minmax(200px, 1fr));
+            gap: 12px;
+            width: min(520px, 45vw);
+        }
+
+        .panel-title {
+            font-size: 0.75em;
+            text-transform: uppercase;
+            color: #777;
+            margin-bottom: 6px;
+            letter-spacing: 0.08em;
+        }
+
+        .system-row {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            font-size: 0.85em;
+            margin-bottom: 4px;
+        }
+
+        .system-row span.value {
+            color: white;
+            font-weight: 600;
+        }
+
+        .system-bar {
+            height: 6px;
+            border-radius: 3px;
+            background: #1a1a1a;
+            overflow: hidden;
+            margin: 4px 0 8px 0;
+        }
+
+        .system-bar .fill {
+            height: 100%;
+            background: linear-gradient(90deg, #00f2ff, #ffae00);
+            width: 0%;
+            transition: width 0.1s linear;
+        }
+
+        .indicator {
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-size: 0.75em;
+            text-transform: uppercase;
+        }
+
+        .indicator.ok { background: rgba(0, 242, 255, 0.15); color: var(--accent); }
+        .indicator.warn { background: rgba(255, 174, 0, 0.15); color: var(--warn); }
+        .indicator.danger { background: rgba(255, 0, 64, 0.15); color: var(--danger); }
+
         .key-hint { position: absolute; bottom: 20px; left: 20px; font-size: 0.8em; opacity: 0.7; }
         kbd { background: #333; padding: 2px 6px; border-radius: 3px; border-bottom: 2px solid #111; }
     </style>
@@ -88,6 +145,48 @@
             <canvas id="torqueGraph" class="graph" width="250" height="60"></canvas>
             <div class="stat-label">Adhérence Latérale</div>
             <canvas id="gripGraph" class="graph" width="250" height="60"></canvas>
+            <div class="stat-label">Température Moteur</div>
+            <canvas id="tempGraph" class="graph" width="250" height="60"></canvas>
+            <div class="stat-label">Consommation Instantanée</div>
+            <canvas id="fuelGraph" class="graph" width="250" height="60"></canvas>
+        </div>
+
+        <div id="system-panels">
+            <div class="hud-panel">
+                <div class="panel-title">Powertrain</div>
+                <div class="system-row"><span>Boost</span><span class="value" id="boost">0.0 bar</span></div>
+                <div class="system-row"><span>Régime turbo</span><span class="value" id="turbo">0%</span></div>
+                <div class="system-row"><span>Temp. embrayage</span><span class="value" id="clutch-temp">75°C</span></div>
+                <div class="system-bar"><div class="fill" id="clutch-bar"></div></div>
+                <div class="system-row"><span>Couple livré</span><span class="value" id="drive-torque">0 Nm</span></div>
+                <div class="system-row"><span>État Moteur</span><span class="indicator ok" id="engine-state">OK</span></div>
+            </div>
+            <div class="hud-panel">
+                <div class="panel-title">Thermique & Fluide</div>
+                <div class="system-row"><span>Carburant</span><span class="value" id="fuel">45.0 L</span></div>
+                <div class="system-bar"><div class="fill" id="fuel-bar"></div></div>
+                <div class="system-row"><span>Temp. eau</span><span class="value" id="coolant">85°C</span></div>
+                <div class="system-row"><span>Temp. huile</span><span class="value" id="oil">90°C</span></div>
+                <div class="system-row"><span>Pompe</span><span class="indicator ok" id="pump-state">OK</span></div>
+            </div>
+            <div class="hud-panel">
+                <div class="panel-title">Châssis & Pneus</div>
+                <div class="system-row"><span>Grip route</span><span class="value" id="road-grip">1.00x</span></div>
+                <div class="system-row"><span>Temp. pneus AV</span><span class="value" id="tire-temp-front">75°C</span></div>
+                <div class="system-row"><span>Temp. pneus AR</span><span class="value" id="tire-temp-rear">75°C</span></div>
+                <div class="system-row"><span>Usure pneus</span><span class="value" id="tire-wear">0%</span></div>
+                <div class="system-row"><span>ABS</span><span class="indicator ok" id="abs-state">On</span></div>
+                <div class="system-row"><span>TCS</span><span class="indicator ok" id="tcs-state">On</span></div>
+            </div>
+            <div class="hud-panel">
+                <div class="panel-title">Électrique & Sécurité</div>
+                <div class="system-row"><span>Batterie</span><span class="value" id="battery">100%</span></div>
+                <div class="system-bar"><div class="fill" id="battery-bar"></div></div>
+                <div class="system-row"><span>ESC</span><span class="indicator ok" id="esc-state">On</span></div>
+                <div class="system-row"><span>Stabilité</span><span class="value" id="stability">100%</span></div>
+                <div class="system-row"><span>Dégradation</span><span class="value" id="damage">0%</span></div>
+                <div class="system-row"><span>Système</span><span class="indicator ok" id="system-state">Nominal</span></div>
+            </div>
         </div>
 
         <div class="key-hint hud-panel">
@@ -174,6 +273,33 @@ const CAR = {
     rollingRes: 0.015
 };
 
+const SYSTEMS = {
+    fuelCapacity: 52, // L
+    fuelDensity: 0.74, // kg/L
+    baseConsumption: 0.08, // L/min at idle
+    boostMax: 1.2, // bar
+    turboSpoolRate: 0.8,
+    coolantOptimal: 92,
+    oilOptimal: 95,
+    coolingRate: 0.2,
+    tireTempOptimal: 85,
+    tireTempRange: 45,
+    tireWearRate: 0.00004,
+    brakeTempRise: 220,
+    brakeTempCool: 0.2,
+    batteryCapacity: 60, // Ah
+    alternatorOutput: 0.35, // Ah/s
+    electricalDrain: 0.08,
+    stabilityDecay: 0.3
+};
+
+const ENV = {
+    ambientTemp: 18,
+    trackGrip: 1.0,
+    humidity: 0.45,
+    wind: Vec2.new(0.3, 0)
+};
+
 // --- MOTEUR PHYSIQUE ---
 
 class Tire {
@@ -189,14 +315,14 @@ class Tire {
     }
 
     // Modèle Pacejka Simplifié pour la courbe de force latérale
-    calculateLateralForce(slipAngle, load) {
+    calculateLateralForce(slipAngle, load, grip=1) {
         // Courbe caractéristique typique d'un pneu
         // Pic à ~6 degrés (0.1 rad), puis chute
         const peakSlip = 0.12; 
         const stiff = CAR.corneringStiffness;
         
         // Saturation de la force (ne peut dépasser coeff de friction * charge)
-        const maxForce = load * CAR.tireGrip;
+        const maxForce = load * CAR.tireGrip * grip;
         
         // Formule simplifiée : Force linéaire au début, puis plafonne
         let latForce = -slipAngle * stiff;
@@ -226,6 +352,24 @@ class CarSimulation {
         this.rpm = CAR.idle;
         this.gear = 0; // 0: N, 1-6: Gears, -1: R
         this.clutch = 0; // 0: Engaged, 1: Disengaged
+        this.driveTorque = 0;
+        this.turbo = 0;
+        this.boost = 0;
+        this.clutchTemp = 75;
+        this.brakeTemps = [80, 80, 80, 80];
+        this.tireTemps = [ENV.ambientTemp + 10, ENV.ambientTemp + 10, ENV.ambientTemp + 12, ENV.ambientTemp + 12];
+        this.tireWear = [0, 0, 0, 0];
+        this.fuel = SYSTEMS.fuelCapacity;
+        this.coolantTemp = SYSTEMS.coolantOptimal;
+        this.oilTemp = SYSTEMS.oilOptimal;
+        this.battery = 1.0;
+        this.alternator = 1.0;
+        this.absActive = false;
+        this.tcsActive = false;
+        this.escActive = false;
+        this.stability = 1.0;
+        this.damage = 0;
+        this.roadGrip = ENV.trackGrip;
         
         // Composants
         this.tires = [
@@ -254,7 +398,71 @@ class CarSimulation {
         return 0;
     }
 
+    updateTurbo(dt, throttle) {
+        const spoolTarget = clamp(throttle * (this.rpm / CAR.redline), 0, 1);
+        this.turbo += (spoolTarget - this.turbo) * SYSTEMS.turboSpoolRate * dt;
+        this.boost = this.turbo * SYSTEMS.boostMax;
+    }
+
+    updateThermals(dt, throttle, brakeForce, slipEnergy) {
+        const loadHeat = (throttle * 40) + (this.rpm / CAR.redline) * 30;
+        const cooling = SYSTEMS.coolingRate + Math.min(0.8, Vec2.mag(this.vel) / 120);
+        const ambient = ENV.ambientTemp;
+
+        this.coolantTemp += (loadHeat - cooling * (this.coolantTemp - ambient)) * dt;
+        this.oilTemp += ((loadHeat * 1.1) - cooling * (this.oilTemp - ambient)) * dt;
+
+        this.clutchTemp += ((throttle * 60) - (this.clutchTemp - ambient) * 0.8) * dt;
+        this.clutchTemp = clamp(this.clutchTemp, ambient, 180);
+
+        this.brakeTemps = this.brakeTemps.map((temp, i) => {
+            const heat = (brakeForce / CAR.brakeTorqueMax) * SYSTEMS.brakeTempRise;
+            const cool = SYSTEMS.brakeTempCool + Math.min(0.6, Vec2.mag(this.vel) / 140);
+            const tireHeat = Math.abs(slipEnergy[i]) * 0.4;
+            return clamp(temp + (heat + tireHeat - cool * (temp - ambient)) * dt, ambient, 900);
+        });
+
+        this.tireTemps = this.tireTemps.map((temp, i) => {
+            const heat = Math.abs(slipEnergy[i]) * 60;
+            const cool = 0.12 + Math.min(0.5, Vec2.mag(this.vel) / 140);
+            return clamp(temp + (heat - cool * (temp - ambient)) * dt, ambient, 140);
+        });
+    }
+
+    updateFuel(dt, throttle) {
+        const loadFactor = (this.rpm / CAR.redline) * throttle;
+        const flow = SYSTEMS.baseConsumption + loadFactor * 0.9;
+        this.fuel = Math.max(0, this.fuel - (flow * dt / 60));
+    }
+
+    updateElectrical(dt) {
+        const alternatorLoad = clamp(this.rpm / CAR.redline, 0.2, 1.0);
+        this.alternator = alternatorLoad;
+        const charge = SYSTEMS.alternatorOutput * this.alternator;
+        const drain = SYSTEMS.electricalDrain + (this.debug ? 0.1 : 0);
+        this.battery = clamp(this.battery + (charge - drain) * dt / SYSTEMS.batteryCapacity, 0, 1);
+    }
+
+    updateChassis(dt, slipEnergy) {
+        const avgTemp = (this.tireTemps[0] + this.tireTemps[1] + this.tireTemps[2] + this.tireTemps[3]) / 4;
+        const tempDelta = Math.abs(avgTemp - SYSTEMS.tireTempOptimal);
+        const tempGrip = clamp(1 - (tempDelta / SYSTEMS.tireTempRange), 0.6, 1.05);
+        const humidityPenalty = 1 - ENV.humidity * 0.12;
+        this.roadGrip = ENV.trackGrip * tempGrip * humidityPenalty;
+
+        this.tireWear = this.tireWear.map((wear, i) => {
+            const wearRate = SYSTEMS.tireWearRate * (1 + Math.abs(slipEnergy[i]) * 0.6);
+            return clamp(wear + wearRate * dt, 0, 1);
+        });
+
+        this.stability = clamp(this.stability + (0.6 - Math.abs(this.yawRate) * 0.08) * dt, 0, 1);
+        const instability = clamp((Math.abs(this.yawRate) - 0.6) * 0.6, 0, 0.6);
+        this.damage = clamp(this.damage + instability * dt * 0.02, 0, 1);
+    }
+
     update(dt, input) {
+        this.updateTurbo(dt, input.throttle);
+
         // 1. DIRECTION (Volant avec inertie)
         const targetSteer = (input.right - input.left) * 0.6; // Max 35 deg
         const steerSpeed = 5.0 * dt;
@@ -295,6 +503,7 @@ class CarSimulation {
         // 4. FORCES PNEUMATIQUES
         let totalForce = Vec2.new();
         let totalMoment = 0;
+        const slipEnergy = [0, 0, 0, 0];
 
         // Pour chaque roue
         this.tires.forEach((tire, i) => {
@@ -318,7 +527,8 @@ class CarSimulation {
             tire.slipAngle = Math.atan2(tireVelLat, absLong) - wheelSteer;
 
             // Calcul Force Latérale (Pacejka)
-            const latForceMag = tire.calculateLateralForce(tire.slipAngle, tire.load);
+            const latForceMag = tire.calculateLateralForce(tire.slipAngle, tire.load, this.roadGrip);
+            slipEnergy[i] = Math.abs(tire.slipAngle) * (tire.load / (CAR.mass * 9.81));
             
             // Vecteur Force dans le repère local voiture
             const forceX = Math.cos(wheelSteer) * latForceMag; // Composante latérale pure
@@ -371,13 +581,24 @@ class CarSimulation {
         if(this.gear > 1 && this.rpm < 2500) this.gear--;
 
         // Couple aux roues
-        const engineTorque = this.getEngineTorque(this.rpm);
+        const engineTorque = this.getEngineTorque(this.rpm) * (1 + this.boost * 0.35);
         const driveTorque = engineTorque * driveRatio * input.throttle;
-        const driveForce = driveTorque / wheelRadius;
+        let driveForce = driveTorque / wheelRadius;
 
         // Freinage
         const brakeT = (input.brake * CAR.brakeTorqueMax) + (input.handbrake ? CAR.handbrakeTorque : 0);
-        const brakeForce = Math.min(brakeT / wheelRadius, Math.abs(velLocal.y) * CAR.mass * 10); // Clamp pour pas reculer
+        let brakeForce = Math.min(brakeT / wheelRadius, Math.abs(velLocal.y) * CAR.mass * 10); // Clamp pour pas reculer
+
+        // ABS / TCS Simulation (limiteur par grip)
+        const rearLoad = (this.tires[2].load + this.tires[3].load);
+        const maxLongForce = rearLoad * CAR.tireGrip * this.roadGrip;
+        this.tcsActive = Math.abs(driveForce) > maxLongForce && input.throttle > 0.2;
+        if(this.tcsActive) driveForce = Math.sign(driveForce) * maxLongForce;
+
+        const frontLoad = (this.tires[0].load + this.tires[1].load);
+        const maxBrakeForce = frontLoad * CAR.tireGrip * this.roadGrip * 1.2;
+        this.absActive = Math.abs(brakeForce) > maxBrakeForce && input.brake > 0.2;
+        if(this.absActive) brakeForce = Math.sign(brakeForce) * maxBrakeForce;
 
         // Application Forces Long
         let longForceVal = driveForce;
@@ -389,6 +610,7 @@ class CarSimulation {
         const rollForce = -velLocal.y * CAR.rollingRes * CAR.mass * 9.81;
 
         longForceVal += dragForce + rollForce;
+        this.driveTorque = driveTorque;
 
         // Vecteur Force Longitudinal Monde
         const longForceVec = Vec2.mul(forward, longForceVal);
@@ -422,6 +644,14 @@ class CarSimulation {
         } else {
             this.finishSkidMark();
         }
+
+        this.updateThermals(dt, input.throttle, brakeT, slipEnergy);
+        this.updateFuel(dt, input.throttle);
+        this.updateElectrical(dt);
+        this.updateChassis(dt, slipEnergy);
+
+        const yawStress = Math.abs(this.yawRate) * 0.4;
+        this.escActive = yawStress > 0.4 && Vec2.mag(this.vel) > 8;
     }
 
     addSkidMark(pos, heading, intensity) {
@@ -735,6 +965,41 @@ class Game {
         slipEl.textContent = slipDeg + "°";
         slipEl.style.color = Math.abs(slipDeg) > 5 ? 'red' : 'white';
 
+        // Additional System UI
+        document.getElementById('boost').textContent = car.boost.toFixed(2) + " bar";
+        document.getElementById('turbo').textContent = Math.round(car.turbo * 100) + "%";
+        document.getElementById('clutch-temp').textContent = Math.round(car.clutchTemp) + "°C";
+        document.getElementById('drive-torque').textContent = Math.round(car.driveTorque) + " Nm";
+
+        const fuelPct = car.fuel / SYSTEMS.fuelCapacity;
+        document.getElementById('fuel').textContent = car.fuel.toFixed(1) + " L";
+        document.getElementById('fuel-bar').style.width = (fuelPct * 100) + "%";
+
+        document.getElementById('coolant').textContent = Math.round(car.coolantTemp) + "°C";
+        document.getElementById('oil').textContent = Math.round(car.oilTemp) + "°C";
+
+        const avgFrontTemp = (car.tireTemps[0] + car.tireTemps[1]) / 2;
+        const avgRearTemp = (car.tireTemps[2] + car.tireTemps[3]) / 2;
+        document.getElementById('tire-temp-front').textContent = Math.round(avgFrontTemp) + "°C";
+        document.getElementById('tire-temp-rear').textContent = Math.round(avgRearTemp) + "°C";
+        document.getElementById('tire-wear').textContent = Math.round((car.tireWear.reduce((a,b)=>a+b,0)/4)*100) + "%";
+        document.getElementById('road-grip').textContent = car.roadGrip.toFixed(2) + "x";
+
+        const batteryPct = Math.round(car.battery * 100);
+        document.getElementById('battery').textContent = batteryPct + "%";
+        document.getElementById('battery-bar').style.width = batteryPct + "%";
+        document.getElementById('stability').textContent = Math.round(car.stability * 100) + "%";
+        document.getElementById('damage').textContent = Math.round(car.damage * 100) + "%";
+
+        this.updateIndicator('engine-state', car.coolantTemp > 115 || car.oilTemp > 130, {ok: 'OK', active: 'ALERTE'});
+        this.updateIndicator('pump-state', car.coolantTemp > 120, {ok: 'OK', active: 'SURCH'});
+        this.updateIndicator('abs-state', car.absActive, {ok: 'On', active: 'Actif'});
+        this.updateIndicator('tcs-state', car.tcsActive, {ok: 'On', active: 'Actif'});
+        this.updateIndicator('esc-state', car.escActive, {ok: 'On', active: 'Actif'});
+        this.updateIndicator('system-state', car.damage > 0.35 || car.fuel < 5, {ok: 'Nominal', active: 'Critique'});
+
+        document.getElementById('clutch-bar').style.width = clamp((car.clutchTemp - 60) / 120, 0, 1) * 100 + "%";
+
         // TACHOMETER DRAW
         const tc = document.getElementById('tachoCanvas');
         const tctx = tc.getContext('2d');
@@ -756,7 +1021,9 @@ class Game {
 
         // Graphs (Rolling buffer logic simplifiée pour l'exemple)
         this.drawMiniGraph('torqueGraph', car.getEngineTorque(car.rpm), 600, '#ffae00');
-        this.drawMiniGraph('gripGraph', Math.abs(car.tires[2].calculateLateralForce(car.tires[2].slipAngle, 3500)), 5000, '#00f2ff');
+        this.drawMiniGraph('gripGraph', Math.abs(car.tires[2].calculateLateralForce(car.tires[2].slipAngle, 3500, car.roadGrip)), 5000, '#00f2ff');
+        this.drawMiniGraph('tempGraph', car.coolantTemp, 140, '#ff0040');
+        this.drawMiniGraph('fuelGraph', fuelPct * 100, 100, '#00f2ff');
     }
 
     drawMiniGraph(id, val, max, color) {
@@ -771,6 +1038,19 @@ class Game {
         const h = (val / max) * c.height;
         ctx.fillStyle = color;
         ctx.fillRect(c.width-1, c.height - h, 1, h);
+    }
+
+    updateIndicator(id, active, labels = {ok: 'OK', active: 'ALERTE'}) {
+        const el = document.getElementById(id);
+        if(active) {
+            el.textContent = labels.active;
+            el.classList.remove('ok');
+            el.classList.add('danger');
+        } else {
+            el.textContent = labels.ok;
+            el.classList.remove('danger');
+            el.classList.add('ok');
+        }
     }
 }
 
