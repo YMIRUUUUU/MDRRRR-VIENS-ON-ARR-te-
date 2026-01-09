@@ -296,7 +296,7 @@ const lerp = (a, b, t) => a + (b - a) * t;
 const smoothstep = (t) => t * t * (3 - 2 * t);
 
 const CAR = {
-    mass: 1420,
+    mass: 1380,
     inertia: 2600,
     wheelBase: 2.68,
     trackWidth: 1.62,
@@ -305,25 +305,25 @@ const CAR = {
     cgHeight: 0.52,
 
     torqueCurve: [
-        {rpm: 0, tq: 180}, {rpm: 900, tq: 240}, {rpm: 1800, tq: 320},
-        {rpm: 3000, tq: 430}, {rpm: 4500, tq: 520}, {rpm: 6000, tq: 560},
-        {rpm: 7200, tq: 430}, {rpm: 8000, tq: 0}
+        {rpm: 0, tq: 210}, {rpm: 900, tq: 280}, {rpm: 1800, tq: 370},
+        {rpm: 3000, tq: 480}, {rpm: 4500, tq: 580}, {rpm: 6000, tq: 630},
+        {rpm: 7200, tq: 480}, {rpm: 8000, tq: 0}
     ],
     redline: 7200,
     idle: 850,
-    gears: [3.6, 2.2, 1.6, 1.2, 0.98, 0.78, 0.64],
+    gears: [3.9, 2.4, 1.7, 1.3, 1.05, 0.82, 0.68],
     reverseRatio: 3.3,
-    finalDrive: 3.7,
+    finalDrive: 4.1,
 
     brakeTorqueMax: 4200,
     handbrakeTorque: 8200,
 
     tireGrip: 1.24,
     corneringStiffness: 130000,
-    dragCoeff: 0.34,
+    dragCoeff: 0.31,
     liftCoeff: -0.6,
     frontalArea: 2.25,
-    rollingRes: 0.014,
+    rollingRes: 0.012,
 
     fuelCapacity: 55,
     batteryCapacityAh: 70
@@ -610,12 +610,18 @@ class CarSimulation {
 
         const engineTorque = this.engine.getTorque(this.engine.rpm);
         const boostTorque = engineTorque * (1 + this.engine.boost * 0.25);
-        const driveTorque = boostTorque * driveRatio * input.throttle;
+        const accelInput = this.transmission.gear === -1 ? input.brake : input.throttle;
+        const brakeInput = this.transmission.gear === -1 ? input.throttle : input.brake;
+        const driveTorque = boostTorque * driveRatio * accelInput;
 
-        this.brakes.update(dt, input.brake, speed);
+        this.brakes.update(dt, brakeInput, speed);
 
-        const brakeForce = this.brakes.getBrakeForce(input.brake, wheelRadius);
-        let longForceVal = driveTorque / wheelRadius;
+        const brakeForce = this.brakes.getBrakeForce(brakeInput, wheelRadius);
+        let driveForce = driveTorque / wheelRadius;
+        if (this.assist.tcs && this.assist.tcsActivity > 0.1) {
+            driveForce *= 1 - 0.35 * this.assist.tcsActivity;
+        }
+        let longForceVal = driveForce;
         if (velLocal.y > 0) longForceVal -= brakeForce;
         else if (velLocal.y < 0) longForceVal += brakeForce;
 
@@ -658,13 +664,11 @@ class CarSimulation {
 
         const avgSlipRatio = this.tires.reduce((sum, t) => sum + t.slipRatio, 0) / this.tires.length;
         const avgSlipAngle = this.tires.reduce((sum, t) => sum + t.slipAngle, 0) / this.tires.length;
-        this.assist.update(dt, avgSlipRatio, avgSlipAngle, input.brake);
+        this.assist.update(dt, avgSlipRatio, avgSlipAngle, brakeInput);
 
-        let driveAssistFactor = 1;
-        if (this.assist.tcs && this.assist.tcsActivity > 0.1) driveAssistFactor -= 0.3 * this.assist.tcsActivity;
-        if (this.assist.abs && this.assist.absActivity > 0.1) longForceVal *= 0.85;
-
-        totalForce = Vec2.add(totalForce, Vec2.mul(forward, longForceVal * driveAssistFactor * 0.02));
+        if (this.assist.abs && this.assist.absActivity > 0.1) {
+            longForceVal *= 0.85;
+        }
         totalMoment *= this.assist.esc ? (1 - this.assist.escActivity * 0.3) : 1;
 
         const acc = Vec2.mul(totalForce, 1/CAR.mass);
